@@ -23,7 +23,7 @@ const Env = z.object({
 
   // Models
   ANTHROPIC_MODEL_PRIMARY: z.string().default("claude-sonnet-4-6"),
-  ANTHROPIC_MODEL_FAST: z.string().default("claude-haiku-4-5-20251001"),
+  ANTHROPIC_MODEL_FAST: z.string().default("claude-haiku-4-5"),
 
   // Sync cadence
   REACHINBOX_SYNC_INTERVAL_MIN: z.coerce.number().int().positive().default(15),
