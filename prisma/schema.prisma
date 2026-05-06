@@ -1,0 +1,132 @@
+// Lead Gen Machine schema
+// Single-tenant MVP — no per-user isolation.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Campaign {
+  id            String   @id @default(cuid())
+  name          String
+  status        String   @default("briefed") // briefed|searching|ready_for_verify|verifying|verified|exported|drafting|live|paused|done|failed
+  briefing      Json     // 7 answers
+  icp           Json?    // persona summary + apollo filters
+  reachinboxId  String?
+  sheetId       String?
+  sheetUrl      String?
+  csvPath       String?
+  targetCount   Int      @default(500)
+  sendDailyCap  Int      @default(40)
+  notes         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  prospects Prospect[]
+  variants  EmailVariant[]
+  jobs      Job[]
+}
+
+model Prospect {
+  id                  String   @id @default(cuid())
+  campaignId          String
+  campaign            Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  apolloPersonId      String?
+  firstName           String?
+  lastName            String?
+  email               String?
+  title               String?
+  seniority           String?
+  linkedinUrl         String?
+  companyName         String?
+  companyDomain       String?
+  industry            String?
+  location            String?
+  companySize         Int?
+
+  emailStatus         String?  // valid|invalid|risky|unknown|disposable|catch_all
+  includeForOutreach  Boolean  @default(true)
+
+  reachinboxContactId String?
+  variantSent         String?
+  sentAt              DateTime?
+  openedAt            DateTime?
+  repliedAt           DateTime?
+  replyTag            String?  // hot|objection|not_interested|ooo
+  replySummary        String?
+
+  raw                 Json?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  replies ReplyEvent[]
+
+  @@unique([campaignId, apolloPersonId])
+  @@index([campaignId, emailStatus])
+  @@index([campaignId, includeForOutreach])
+  @@index([campaignId, replyTag])
+}
+
+model EmailVariant {
+  id          String   @id @default(cuid())
+  campaignId  String
+  campaign    Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  label       String   // "A: pain-point"
+  angle       String   // pain|outcome|social_proof|curiosity|direct
+  subject     String
+  body        String
+  followups   Json     // [{step, delayDays, subject, body}]
+
+  sent        Int      @default(0)
+  opened      Int      @default(0)
+  replied     Int      @default(0)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([campaignId])
+}
+
+model ReplyEvent {
+  id         String   @id @default(cuid())
+  prospectId String
+  prospect   Prospect @relation(fields: [prospectId], references: [id], onDelete: Cascade)
+
+  receivedAt DateTime
+  subject    String?
+  body       String
+  sentiment  String?  // positive|objection|negative|neutral
+  tag        String?  // hot|objection|not_interested|ooo
+  confidence Float?
+  raw        Json?
+
+  createdAt  DateTime @default(now())
+
+  @@index([prospectId])
+  @@index([tag])
+}
+
+model Job {
+  id         String   @id @default(cuid())
+  campaignId String?
+  campaign   Campaign? @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  type       String   // apollo_search|verify|export|emails_gen|reachinbox_create|reachinbox_sync|reply_categorize
+  status     String   @default("queued") // queued|running|done|failed
+  bullId     String?
+  error      String?
+  startedAt  DateTime?
+  finishedAt DateTime?
+  meta       Json?
+
+  createdAt  DateTime @default(now())
+
+  @@index([campaignId, type])
+  @@index([status])
+}
