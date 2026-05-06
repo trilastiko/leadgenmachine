@@ -9,6 +9,10 @@ import { db } from "../lib/db";
 import { runSearch, type SearchJobData } from "./apollo-search.worker";
 import { runVerify, type VerifyJobData } from "./verify.worker";
 import { runExport, type ExportJobData } from "./export.worker";
+import {
+  runReachInboxLaunch,
+  type ReachInboxJobData,
+} from "./reachinbox.worker";
 
 env(); // validate
 
@@ -95,7 +99,12 @@ const handlers: Record<string, Handler> = {
       () => runExport(job as Job<ExportJobData>),
     ),
   emails: stub("emails"),
-  reachinbox: stub("reachinbox"),
+  reachinbox: (job) =>
+    withJobTracking(
+      "reachinbox_create",
+      job as Job<ReachInboxJobData>,
+      () => runReachInboxLaunch(job as Job<ReachInboxJobData>),
+    ),
   sync: stub("sync"),
   reply: stub("reply"),
 };
