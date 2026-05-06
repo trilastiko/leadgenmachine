@@ -7,6 +7,8 @@ import { redis } from "../lib/queue";
 import { env } from "../lib/env";
 import { db } from "../lib/db";
 import { runSearch, type SearchJobData } from "./apollo-search.worker";
+import { runVerify, type VerifyJobData } from "./verify.worker";
+import { runExport, type ExportJobData } from "./export.worker";
 
 env(); // validate
 
@@ -80,8 +82,18 @@ const handlers: Record<string, Handler> = {
       job as Job<SearchJobData>,
       () => runSearch(job as Job<SearchJobData>),
     ),
-  verify: stub("verify"),
-  export: stub("export"),
+  verify: (job) =>
+    withJobTracking(
+      "verify",
+      job as Job<VerifyJobData>,
+      () => runVerify(job as Job<VerifyJobData>),
+    ),
+  export: (job) =>
+    withJobTracking(
+      "export",
+      job as Job<ExportJobData>,
+      () => runExport(job as Job<ExportJobData>),
+    ),
   emails: stub("emails"),
   reachinbox: stub("reachinbox"),
   sync: stub("sync"),
