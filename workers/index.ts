@@ -1,20 +1,70 @@
 /**
  * Worker entrypoint. Boots a BullMQ worker for each queue.
  * Run with: pnpm worker:dev
- *
- * Individual workers live in workers/<name>.worker.ts and are wired up here.
- * In commit 1 they are stubs that log and resolve; later commits replace them.
  */
-import { Worker } from "bullmq";
+import { Worker, type Job } from "bullmq";
 import { redis } from "../lib/queue";
 import { env } from "../lib/env";
+import { db } from "../lib/db";
+import { runSearch, type SearchJobData } from "./apollo-search.worker";
 
 env(); // validate
 
 const log = (q: string, msg: string, extra?: unknown) =>
   console.log(`[worker:${q}] ${msg}`, extra ?? "");
 
-type Handler = (job: { id?: string; name: string; data: unknown }) => Promise<unknown>;
+type Handler = (job: Job<unknown>) => Promise<unknown>;
+
+async function withJobTracking<T extends { campaignId?: string }>(
+  type: string,
+  job: Job<T>,
+  fn: () => Promise<unknown>,
+): Promise<unknown> {
+  const tracked = await db.job
+    .create({
+      data: {
+        type,
+        status: "running",
+        bullId: String(job.id),
+        startedAt: new Date(),
+        campaignId: job.data?.campaignId ?? null,
+      },
+    })
+    .catch((err) => {
+      console.error("failed to create job row", err);
+      return null;
+    });
+  try {
+    const out = await fn();
+    if (tracked) {
+      await db.job.update({
+        where: { id: tracked.id },
+        data: { status: "done", finishedAt: new Date(), meta: out as object },
+      });
+    }
+    return out;
+  } catch (err) {
+    if (tracked) {
+      await db.job.update({
+        where: { id: tracked.id },
+        data: {
+          status: "failed",
+          finishedAt: new Date(),
+          error: (err as Error).message?.slice(0, 4000) ?? "unknown",
+        },
+      });
+    }
+    if (job.data?.campaignId) {
+      await db.campaign
+        .update({
+          where: { id: job.data.campaignId },
+          data: { status: "failed" },
+        })
+        .catch(() => null);
+    }
+    throw err;
+  }
+}
 
 const stub =
   (name: string): Handler =>
@@ -24,7 +74,12 @@ const stub =
   };
 
 const handlers: Record<string, Handler> = {
-  search: stub("search"),
+  search: (job) =>
+    withJobTracking(
+      "apollo_search",
+      job as Job<SearchJobData>,
+      () => runSearch(job as Job<SearchJobData>),
+    ),
   verify: stub("verify"),
   export: stub("export"),
   emails: stub("emails"),
