@@ -3,7 +3,7 @@
  * Run with: pnpm worker:dev
  */
 import { Worker, type Job } from "bullmq";
-import { redis } from "../lib/queue";
+import { queue, redis } from "../lib/queue";
 import { env } from "../lib/env";
 import { db } from "../lib/db";
 import { runSearch, type SearchJobData } from "./apollo-search.worker";
@@ -13,6 +13,8 @@ import {
   runReachInboxLaunch,
   type ReachInboxJobData,
 } from "./reachinbox.worker";
+import { runSync, type SyncJobData } from "./reachinbox-sync.worker";
+import { runReply, type ReplyJobData } from "./replies.worker";
 
 env(); // validate
 
@@ -60,7 +62,7 @@ async function withJobTracking<T extends { campaignId?: string }>(
         },
       });
     }
-    if (job.data?.campaignId) {
+    if (job.data?.campaignId && type !== "reachinbox_sync" && type !== "reply_categorize") {
       await db.campaign
         .update({
           where: { id: job.data.campaignId },
@@ -71,13 +73,6 @@ async function withJobTracking<T extends { campaignId?: string }>(
     throw err;
   }
 }
-
-const stub =
-  (name: string): Handler =>
-  async (job) => {
-    log(name, `received job ${job.id}`, job.data);
-    return { stub: true };
-  };
 
 const handlers: Record<string, Handler> = {
   search: (job) =>
@@ -98,15 +93,28 @@ const handlers: Record<string, Handler> = {
       job as Job<ExportJobData>,
       () => runExport(job as Job<ExportJobData>),
     ),
-  emails: stub("emails"),
+  emails: async (job) => {
+    log("emails", `received job ${job.id}`, job.data);
+    return { stub: true };
+  },
   reachinbox: (job) =>
     withJobTracking(
       "reachinbox_create",
       job as Job<ReachInboxJobData>,
       () => runReachInboxLaunch(job as Job<ReachInboxJobData>),
     ),
-  sync: stub("sync"),
-  reply: stub("reply"),
+  sync: (job) =>
+    withJobTracking(
+      "reachinbox_sync",
+      job as Job<SyncJobData>,
+      () => runSync(job as Job<SyncJobData>),
+    ),
+  reply: (job) =>
+    withJobTracking(
+      "reply_categorize",
+      job as Job<ReplyJobData>,
+      () => runReply(job as Job<ReplyJobData>),
+    ),
 };
 
 const workers: Worker[] = [];
@@ -124,6 +132,41 @@ for (const [queueName, handler] of Object.entries(handlers)) {
 }
 
 console.log(`[workers] booted ${workers.length} workers`);
+
+// Schedule recurring sync for every live campaign on boot, then re-check every 5 min.
+async function scheduleLiveSyncs() {
+  const live = await db.campaign.findMany({
+    where: { status: "live", reachinboxId: { not: null } },
+    select: { id: true },
+  });
+  const intervalMs = env().REACHINBOX_SYNC_INTERVAL_MIN * 60_000;
+  for (const c of live) {
+    await queue("sync").add(
+      "sync",
+      { campaignId: c.id },
+      {
+        jobId: `sync:${c.id}`,
+        repeat: { every: intervalMs },
+        removeOnComplete: { count: 50 },
+        removeOnFail: { count: 50 },
+      },
+    );
+  }
+  if (live.length > 0) {
+    log("sync", `scheduled ${live.length} repeating syncs`);
+  }
+}
+
+scheduleLiveSyncs().catch((e) =>
+  console.error("scheduleLiveSyncs failed", e),
+);
+setInterval(
+  () =>
+    scheduleLiveSyncs().catch((e) =>
+      console.error("scheduleLiveSyncs failed", e),
+    ),
+  5 * 60_000,
+);
 
 async function shutdown() {
   console.log("[workers] shutting down");
