@@ -1,16 +1,17 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { verifySessionToken, SESSION_COOKIE } from "./lib/auth";
+import { verifySessionTokenEdge } from "./lib/auth-edge";
+import { SESSION_COOKIE } from "./lib/session";
 
 const PUBLIC_PATHS = ["/login", "/api/login", "/api/health", "/api/webhooks"];
 
-export function middleware(req: NextRequest) {
+export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
   if (PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`))) {
     return NextResponse.next();
   }
 
   const token = req.cookies.get(SESSION_COOKIE)?.value;
-  if (verifySessionToken(token)) return NextResponse.next();
+  if (await verifySessionTokenEdge(token)) return NextResponse.next();
 
   if (pathname.startsWith("/api/")) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });

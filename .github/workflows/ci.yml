@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: ["**"]
+    branches: ["claude/lead-generation-campaign-manager-LjYtY"]
   pull_request:
 
 permissions:
@@ -28,3 +28,4 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm lint
       - run: pnpm test
+      - run: pnpm build
