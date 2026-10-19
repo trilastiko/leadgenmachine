@@ -15,9 +15,11 @@ export function makeSessionToken(): string {
 }
 
 export function verifySessionToken(token: string | undefined): boolean {
-  if (!token) return false;
+  if (!token || !/^\d{13}\.[a-f0-9]{64}$/.test(token)) return false;
   const [issued, sig] = token.split(".");
-  if (!issued || !sig) return false;
+  const age = Date.now() - Number(issued);
+  // Match the 30-day cookie lifetime and allow a small clock skew.
+  if (age < -60_000 || age > 30 * 24 * 60 * 60 * 1000) return false;
   const secret = env().SESSION_SECRET;
   const expected = sign(issued, secret);
   try {
