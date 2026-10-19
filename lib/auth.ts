@@ -1,8 +1,7 @@
 import { cookies } from "next/headers";
 import { createHmac, timingSafeEqual } from "crypto";
 import { env } from "./env";
-
-const COOKIE = "lgm_session";
+import { parseSessionToken, SESSION_COOKIE as COOKIE, SESSION_MAX_AGE_MS } from "./session";
 
 function sign(value: string, secret: string): string {
   return createHmac("sha256", secret).update(value).digest("hex");
@@ -15,11 +14,9 @@ export function makeSessionToken(): string {
 }
 
 export function verifySessionToken(token: string | undefined): boolean {
-  if (!token || !/^\d{13}\.[a-f0-9]{64}$/.test(token)) return false;
-  const [issued, sig] = token.split(".");
-  const age = Date.now() - Number(issued);
-  // Match the 30-day cookie lifetime and allow a small clock skew.
-  if (age < -60_000 || age > 30 * 24 * 60 * 60 * 1000) return false;
+  const parts = parseSessionToken(token);
+  if (!parts) return false;
+  const { issued, sig } = parts;
   const secret = env().SESSION_SECRET;
   const expected = sign(issued, secret);
   try {
@@ -42,7 +39,7 @@ export async function login(secret: string): Promise<boolean> {
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
     path: "/",
-    maxAge: 60 * 60 * 24 * 30,
+    maxAge: SESSION_MAX_AGE_MS / 1000,
   });
   return true;
 }

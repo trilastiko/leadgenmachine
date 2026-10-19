@@ -10,3 +10,16 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    groups:
+      database-client:
+        patterns:
+          - prisma
+          - "@prisma/client"
+      queue-runtime:
+        patterns:
+          - bullmq
+          - ioredis
+      next-framework:
+        patterns:
+          - next
+          - eslint-config-next
