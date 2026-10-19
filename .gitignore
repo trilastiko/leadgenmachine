@@ -1,0 +1,50 @@
+# deps
+node_modules
+.pnpm-store
+
+# next
+.next
+out
+next-env.d.ts
+
+# build
+dist
+build
+tsconfig.tsbuildinfo
+
+# env
+.env
+.env.*
+!.env.example
+
+# secrets
+secrets/
+*.pem
+
+# logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# os / editor
+.DS_Store
+.vscode
+.idea
+
+# tests / coverage
+coverage
+
+# storage (CSV exports etc.)
+storage/
+
+# prisma
+prisma/migrations/dev.db*
+
+# Local credentials
+!.env.*.example
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+*.key
